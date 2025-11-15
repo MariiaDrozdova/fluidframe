@@ -8,6 +8,7 @@ This implementation derives from the work of Colabrese et al. (2017) with the fo
 - The environment transitions are discretised using fixed timesteps, versus a new state being specified to the agent when the observation changes in Colabrese et al. (2017).
 
 These implementation details do not appear to change the main results (Fig. 1).
+
 ![swimmer-results](https://sm7610.github.io/assets/work/swimmer-results.png)
 
 Figure 1: Plots of trained and naïve swimmers navigating through a cellular flow. The training is done using `main.py`, and the evaluation is done using `eval.py`.
@@ -41,6 +42,8 @@ Episode 0 return: 	 22.267112542257625
 .
 .
 .
+Last episode return: 	 448.4741962995584
+Policy: 	 [2 2 1 1 1 1 1 1 1 0 0 1].
 ```
 
 The swimmer speed and alignment timescale can be configured via the command line interface, e.g. 
