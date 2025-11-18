@@ -42,6 +42,8 @@ Episode 0 return: 	 22.267112542257625
 .
 .
 .
+Last episode return: 	 448.4741962995584
+Policy: 	 [2 2 1 1 1 1 1 1 1 0 0 1].
 ```
 
 The swimmer speed and alignment timescale can be configured via the command line interface, e.g. 
