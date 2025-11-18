@@ -8,6 +8,7 @@ This implementation derives from the work of Colabrese et al. (2017) with the fo
 - The environment transitions are discretised using fixed timesteps, versus a new state being specified to the agent when the observation changes in Colabrese et al. (2017).
 
 These implementation details do not appear to change the main results (Fig. 1).
+
 ![swimmer-results](https://sm7610.github.io/assets/work/swimmer-results.png)
 
 Figure 1: Plots of trained and naïve swimmers navigating through a cellular flow. The training is done using `main.py`, and the evaluation is done using `eval.py`.
@@ -16,8 +17,8 @@ Figure 1: Plots of trained and naïve swimmers navigating through a cellular flo
 With [dedalus](http://dedalus-project.org) as a dependency for some environments in this repository, the installation guide uses `conda`. An example of the installation instructions is below:
 
 ```
-$ conda create -n pravah_env python=3.13.7  # creates a virtual environment for the installation
-$ conda activate pravah_env  # activates the virtual environment 
+$ conda create -n fluidframe_env python=3.13.7  # creates a virtual environment for the installation
+$ conda activate fluidframe_env  # activates the virtual environment
 $ conda install -c conda-forge dedalus  # installs dedalus
 $ pip install tqdm
 ```
