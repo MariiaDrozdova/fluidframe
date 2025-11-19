@@ -2,7 +2,7 @@ from typing import Optional
 
 import numpy as np
 
-from environment import Environment
+from environments.base import Environment
 
 # Flow parameters
 _SWIMMER_SPEED = 0.3

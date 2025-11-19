@@ -3,7 +3,7 @@ import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Dict
-from environment_taylor_green import TaylorGreenEnvironment
+from environments.taylor_green import TaylorGreenEnvironment
 
 
 def load_policy(filename: str) -> np.ndarray:

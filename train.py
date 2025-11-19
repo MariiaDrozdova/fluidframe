@@ -3,7 +3,7 @@ import numpy as np
 from tqdm import tqdm
 from typing import Optional
 from agent_qlearning import QLearningAgent
-from environment import Environment
+from environments.base import Environment
 
 
 _Q = 1000 * np.ones((12, 4))

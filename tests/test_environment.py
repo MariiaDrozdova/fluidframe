@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from environment_taylor_green import TaylorGreenEnvironment
+from environments.taylor_green import TaylorGreenEnvironment
 
 
 def test_init():

@@ -2,7 +2,7 @@ import numpy as np
 import dedalus.public as d3
 from scipy.interpolate import RegularGridInterpolator
 
-from environment_taylor_green import TaylorGreenEnvironment
+from environments.taylor_green import TaylorGreenEnvironment
 
 # Dedalus parameters
 _N_GRID = 256

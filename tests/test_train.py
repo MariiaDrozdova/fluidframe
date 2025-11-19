@@ -6,7 +6,7 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from train import train
-from environment_taylor_green import TaylorGreenEnvironment
+from environments.taylor_green import TaylorGreenEnvironment
 
 
 def test_train(n_episodes=2, n_steps=5, save=False):

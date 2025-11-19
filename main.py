@@ -1,7 +1,7 @@
 import argparse
 
-from environment_taylor_green import TaylorGreenEnvironment
-from environment_taylor_green_dedalus import TaylorGreenDedalusEnvironment
+from environments.taylor_green import TaylorGreenEnvironment
+from environments.taylor_green_dedalus import TaylorGreenDedalusEnvironment
 from train import train
 
 
