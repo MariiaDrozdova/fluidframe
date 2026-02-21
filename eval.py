@@ -127,10 +127,9 @@ def eval(
 
             action = policy[obs]
             next_obs, reward = env.step(action)
-            next_obs_naive, reward_naive = env_naive.step(1)
+            _, reward_naive = env_naive.step(1)
 
             obs = next_obs
-            obs_naive = next_obs_naive
 
             episode_return += reward
             episode_return_naive += reward_naive
@@ -143,7 +142,7 @@ def eval(
 
         if logging:
             print(
-                f"Episode {episode+1} \t return: \t{episode_return} \t naïve return: \t{episode_return_naive}"
+                f"Episode {episode+1} \t return: \t{episode_return:.2f} \t naïve return: \t{episode_return_naive:.2f}"
             )
 
     if logging:
