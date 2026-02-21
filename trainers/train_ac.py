@@ -1,0 +1,96 @@
+# train_actorcritic.py
+import os
+import numpy as np
+from typing import Optional, Dict, List
+from tqdm import tqdm
+import torch
+
+from agents.agent_AClearning import ActorCriticAgent, ActorCriticConfig
+from agents.agent_saclearning import map_action_to_env
+
+_SAVE_FOLDER = "./checkpoints/"
+
+def save_actorcritic_checkpoint(agent: ActorCriticAgent, episode: int) -> None:
+    os.makedirs(_SAVE_FOLDER, exist_ok=True)
+    path = os.path.join(_SAVE_FOLDER, f"ac_ep{episode}.pt")
+    payload = {
+        "actor": agent.actor.state_dict(),
+        "critic": agent.critic.state_dict(),
+        "cfg": agent.cfg.__dict__,
+    }
+    torch.save(payload, path)
+    print(f"Saved ActorCritic checkpoint: {path}")
+
+
+def train_actorcritic(
+    env,
+    n_episodes: int,
+    n_steps: int,
+    save: bool = False,
+    logging: bool = True,
+    seed: Optional[int] = None,
+) -> Dict[str, np.ndarray]:
+    """
+    Train simple on-policy Actor-Critic.
+    """
+
+    obs0 = np.asarray(env.reset(), dtype=np.float32)
+    cfg = ActorCriticConfig(obs_dim=int(obs0.shape[0]), act_dim=1)
+    agent = ActorCriticAgent(cfg, seed=seed)
+
+    # how many environment steps to collect before updating (to reduce variance)
+    update_every = 500
+
+    episode_returns: List[float] = []
+
+    for episode in tqdm(range(n_episodes)):
+        obs = np.asarray(env.reset(), dtype=np.float32)
+        episode_return = 0.0
+
+        # buffer for batched updates
+        transition_buffer = []
+
+        for step in range(n_steps):
+            a_tanh, logp, entropy_proxy = agent.act(obs, deterministic=False)
+
+            # map [-1,1] -> [0,4) and wrap
+            env_action = float(map_action_to_env(a_tanh))
+
+            next_obs, reward = env.step(env_action)
+            next_obs = np.asarray(next_obs, dtype=np.float32)
+
+            done = float(step == n_steps - 1)
+
+            # store transition
+            transition_buffer.append(
+                (obs, float(reward), next_obs, done, float(a_tanh))
+            )
+
+            # performs one batched update every K steps
+            if len(transition_buffer) >= update_every or done:
+                info = agent.update_batch(transition_buffer)
+                transition_buffer.clear()
+
+            obs = next_obs
+            episode_return += float(reward)
+
+        episode_returns.append(episode_return)
+
+        if save:
+            if episode % 25 == 0 or episode == n_episodes - 1:
+                save_actorcritic_checkpoint(agent, episode)
+            if episode == n_episodes - 1:
+                os.makedirs(_SAVE_FOLDER, exist_ok=True)
+                np.save(
+                    os.path.join(_SAVE_FOLDER, "actorcritic_episode_returns.npy"),
+                    np.array(episode_returns, dtype=np.float32),
+                )
+
+        if logging:
+            print(
+                f"Episode {episode} return:\t {episode_return:.4f}\t"
+                f" actor_loss={info.get('actor_loss', 0.0):.4f}"
+                f" critic_loss={info.get('critic_loss', 0.0):.4f}"
+            )
+
+    return {"episode_returns": np.array(episode_returns, dtype=np.float32)}

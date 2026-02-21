@@ -78,7 +78,7 @@ def plot_policy(
     plt.legend(bbox_to_anchor=(1.05, 0.05), loc="lower left")
     plt.title(rf"$\phi={plot_params["phi"]}, \psi={plot_params["psi"]}$")
     plt.tight_layout()
-    plt.savefig(f"phi{plot_params["phi"]}_psi{plot_params["psi"]}.pdf", dpi=300)
+    plt.savefig(f"algo{plot_params["algo"]}_phi{plot_params["phi"]}_psi{plot_params["psi"]}.pdf", dpi=300)
 
 
 def eval(

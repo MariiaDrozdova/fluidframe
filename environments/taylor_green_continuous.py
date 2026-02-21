@@ -48,7 +48,7 @@ class TaylorGreenContinuousEnvironment(TaylorGreenEnvironment):
                     f"Invalid action_type {self.action_type!r}. Expected 'discrete', 'continuous', or None."
                 )
 
-    def _get_observation(self):
+    def _get_observation_original(self):
         """
         Returns:
             np.ndarray: observation = [vorticity, orientation], both are continuous-valued.
@@ -61,6 +61,24 @@ class TaylorGreenContinuousEnvironment(TaylorGreenEnvironment):
 
         orientation = np.arctan2(self.swimming_velocity[1], self.swimming_velocity[0])
         return np.array([vorticity_scaled, orientation])
+
+    def _get_observation(self):
+        """Compact continuous observation: [cosθ, sinθ, ux/u0, uy/u0, ω/u0]."""
+
+        theta = float(self.orientation)
+        ux, uy = map(float, self.flow_velocity)
+        omega = float(self.flow_vorticity)
+
+        u0 = float(self.u0)
+        if abs(u0) > 1e-8:
+            ux /= u0
+            uy /= u0
+            omega /= u0
+
+        return np.array(
+            [np.cos(theta), np.sin(theta), ux, uy, omega],
+            dtype=np.float32,
+        )
 
     def get_preferred_orientation(self, action):
         """Transforms the action into a preferred swimmer orientation."""
