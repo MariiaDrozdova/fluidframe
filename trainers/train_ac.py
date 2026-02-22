@@ -39,7 +39,7 @@ def train_actorcritic(
     agent = ActorCriticAgent(cfg, seed=seed)
 
     # how many environment steps to collect before updating (to reduce variance)
-    update_every = 500
+    update_every = 50
 
     episode_returns: List[float] = []
 
@@ -53,7 +53,6 @@ def train_actorcritic(
         for step in range(n_steps):
             a_tanh, logp, entropy_proxy = agent.act(obs, deterministic=False)
 
-            # map [-1,1] -> [0,4) and wrap
             env_action = float(map_action_to_env(a_tanh))
 
             next_obs, reward = env.step(env_action)

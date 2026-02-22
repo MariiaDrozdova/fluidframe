@@ -69,7 +69,7 @@ def train_sac(
             else:
                 a = float(agent.act(obs, deterministic=False))
 
-            env_action = float(map_action_to_env(a)) % 4.0
+            env_action = float(map_action_to_env(a))
 
             # --- step env ---
             next_obs, reward = env.step(env_action)

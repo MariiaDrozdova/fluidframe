@@ -31,11 +31,11 @@ class ValueNet(nn.Module):
 class ActorCriticConfig:
     obs_dim: int
     act_dim: int = 1
-    gamma: float = 0.999
+    gamma: float = 0.995
     lr_actor: float = 3e-4
     lr_critic: float = 3e-4
     value_coef: float = 0.5
-    entropy_coef: float = 1e-3
+    entropy_coef: float = 0.0
     grad_clip: float = 1.0
 
 
@@ -119,7 +119,8 @@ class ActorCriticAgent:
 
         # Actor update
         adv = advantage.detach()
-        adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+        if adv.std() > 1e-3:
+            adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         adv = adv.clamp(-5, 5)
         actor_loss = -(logp *adv.reshape(())).mean()
         if self.cfg.entropy_coef != 0.0:

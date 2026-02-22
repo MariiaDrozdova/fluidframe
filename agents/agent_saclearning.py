@@ -8,7 +8,7 @@ from typing import Tuple, Optional
 # Map SAC action in [-1,1] -> environment action in [0,2*pi)
 def map_action_to_env(a_tanh: float) -> float:
     a_tanh = float(np.clip(a_tanh, -1.0, 1.0))
-    return (a_tanh + 1.0) * np.pi
+    return (a_tanh + 1.0) * np.pi % (2*np.pi)
 
 # ---------- replay buffer ----------
 class ReplayBuffer:
@@ -40,7 +40,7 @@ class ReplayBuffer:
         )
 
 # ---------- networks ----------
-LOG_STD_MIN, LOG_STD_MAX = -5, 2
+LOG_STD_MIN, LOG_STD_MAX = -10, 2
 
 class Actor(nn.Module):
     def __init__(self, obs_dim: int, act_dim: int, hidden: int = 256):
@@ -87,14 +87,14 @@ class CriticQ(nn.Module):
 class SACConfig:
     obs_dim: int = 9
     act_dim: int = 1
-    gamma: float = 0.999
+    gamma: float = 0.995
     tau: float = 0.005
     alpha: float = 0.02
-    lr: float = 3e-4
+    lr: float = 1e-4
     batch_size: int = 256
-    start_steps: int = 10_000
-    update_after: int = 10_000
-    update_every: int = 50
+    start_steps: int = 5_000
+    update_after: int = 5_000
+    update_every: int = 1
     updates_per_step: int = 1
 
 class SACAgent:
