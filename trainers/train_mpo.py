@@ -25,6 +25,44 @@ def save_mpo_checkpoint(agent: "MPOAgent", episode: int) -> None:
     torch.save(payload, path)
     print(f"Saved MPO checkpoint: {path}")
 
+def save_mpo_checkpoint(
+    agent: "MPOAgent",
+    episode: int,
+    swimmer_speed: float,
+    alignment_timescale: float,
+    seed: int,
+    observation_type: str,
+    tag: str = "",
+) -> None:
+    os.makedirs(_MPO_SAVE_FOLDER, exist_ok=True)
+
+    name = (
+        f"mpo_{tag}_ep{episode}"
+        f"_phi{swimmer_speed}"
+        f"_psi{alignment_timescale}"
+        f"_seed{seed}"
+        f"_obs{observation_type}.pt"
+    )
+
+    path = os.path.join(_MPO_SAVE_FOLDER, name)
+
+    payload = {
+        "actor": agent.actor.state_dict(),
+        "q1": agent.q1.state_dict(),
+        "q2": agent.q2.state_dict(),
+        "q1_targ": agent.q1_targ.state_dict(),
+        "q2_targ": agent.q2_targ.state_dict(),
+        "cfg": agent.cfg.__dict__,
+        "episode": episode,
+        "swimmer_speed": swimmer_speed,
+        "alignment_timescale": alignment_timescale,
+        "seed": seed,
+        "observation_type": observation_type,
+    }
+
+    torch.save(payload, path)
+    print(f"Saved MPO checkpoint: {path}")
+
 
 def train_mpo(
     env,
@@ -69,6 +107,7 @@ def train_mpo(
     episode_returns: List[float] = []
 
     total_steps = 0
+    best_ma = float("-inf")
 
     for episode in tqdm(range(n_episodes)):
         obs = np.asarray(env.reset(), dtype=np.float32)
@@ -89,7 +128,8 @@ def train_mpo(
 
             # Optional: normalize by dt for scale consistency
             dt = float(getattr(env, "dt", 1.0))
-            reward = float(reward) / dt
+            c = 1.0 / dt  # reward scaling factor
+            reward = float(reward) *c
 
             # episode boundary treated as terminal for training
             done = float(step == n_steps - 1)
@@ -111,18 +151,22 @@ def train_mpo(
                         wandb.log(info, step=total_steps)
 
         episode_returns.append(episode_return)
+        ma = float(np.mean(episode_returns[-20:]))/c if len(episode_returns) >= 20 else float("nan")
 
-        if save and (episode % 25 == 0 or episode == n_episodes - 1):
-            save_mpo_checkpoint(agent, episode)
-            if episode == n_episodes - 1:
-                os.makedirs(_MPO_SAVE_FOLDER, exist_ok=True)
-                np.save(
-                    os.path.join(_MPO_SAVE_FOLDER, "mpo_episode_returns.npy"),
-                    np.array(episode_returns, dtype=np.float32),
-                )
+        if ma > best_ma:
+            best_ma = ma
+            save_mpo_checkpoint(
+                agent,
+                episode=episode,
+                swimmer_speed=env.swimmer_speed,
+                alignment_timescale=env.alignment_timescale,
+                seed=env.seed,
+                observation_type=getattr(env, "observation_type", "unknown"),
+                tag="BEST",
+            )
+
 
         if logging:
-            ma = float(np.mean(episode_returns[-20:])) if len(episode_returns) >= 20 else float("nan")
             print(f"Episode {episode} return:\t {episode_return:.4f}\t MA20={ma:.4f}")
             if use_wandb:
                 wandb.log(

@@ -10,12 +10,26 @@ from agents.agent_saclearning import SACAgent, SACConfig, ReplayBuffer, map_acti
 _SAC_SAVE_FOLDER = "./checkpoints/"
 
 
-def save_sac_checkpoint(agent: "SACAgent", episode: int, obs_dim: int) -> None:
+def save_sac_checkpoint(
+    agent: "SACAgent",
+    episode: int,
+    swimmer_speed: float,
+    alignment_timescale: float,
+    seed: int,
+    observation_type: str,
+    tag: str = "",
+) -> None:
     os.makedirs(_SAC_SAVE_FOLDER, exist_ok=True)
-    if obs_dim == 5:
-        path = os.path.join(_SAC_SAVE_FOLDER, f"sac_ep{episode}.pt")
-    else:
-        path = os.path.join(_SAC_SAVE_FOLDER, f"sac_ep{episode}_obsdim{obs_dim}.pt")
+
+    name = (
+        f"sac_{tag}_ep{episode}"
+        f"_phi{swimmer_speed}"
+        f"_psi{alignment_timescale}"
+        f"_seed{seed}"
+        f"_obs{observation_type}.pt"
+    )
+
+    path = os.path.join(_SAC_SAVE_FOLDER, name)
     payload = {
         "actor": agent.actor.state_dict(),
         "q1": agent.q1.state_dict(),
@@ -23,6 +37,11 @@ def save_sac_checkpoint(agent: "SACAgent", episode: int, obs_dim: int) -> None:
         "q1_targ": agent.q1_targ.state_dict(),
         "q2_targ": agent.q2_targ.state_dict(),
         "cfg": agent.cfg.__dict__,
+        "episode": episode,
+        "swimmer_speed": swimmer_speed,
+        "alignment_timescale": alignment_timescale,
+        "seed": seed,
+        "observation_type": observation_type,
     }
 
     torch.save(payload, path)
@@ -70,6 +89,7 @@ def train_sac(
     episode_returns: List[float] = []
 
     total_steps = 0
+    best_ma = float("-inf")
 
     for episode in tqdm(range(n_episodes)):
         obs = np.asarray(env.reset(), dtype=np.float32)
@@ -90,7 +110,8 @@ def train_sac(
 
             # reward
             dt = float(getattr(env, "dt", 1.0))
-            reward = float(reward) * 10
+            c = 1.0/dt # reward scaling factor to get returns in a nice range for SAC (not strictly necessary, but helps with stability and learning speed)
+            reward = float(reward) * c
 
             # episode boundary treated as terminal for training
             done = 0.0#float(step == n_steps - 1)
@@ -112,19 +133,24 @@ def train_sac(
                         wandb.log(info, step=total_steps)
 
         episode_returns.append(episode_return)
+        ma = float(np.mean(episode_returns[-20:]))/c if len(episode_returns) >= 20 else float("nan")
 
-        if save and (episode % 25 == 0 or episode == n_episodes - 1):
-            save_sac_checkpoint(agent, episode, obs_dim)
-            if episode == n_episodes - 1:
-                os.makedirs(_SAC_SAVE_FOLDER, exist_ok=True)
-                np.save(
-                    os.path.join(_SAC_SAVE_FOLDER, "sac_episode_returns.npy"),
-                    np.array(episode_returns, dtype=np.float32),
-                )
+        # best moving-average checkpoint
+        if ma > best_ma:
+            best_ma = ma
+            save_sac_checkpoint(
+                    agent,
+                    episode=episode,
+                    swimmer_speed=float(getattr(env, "swimmer_speed", float("nan"))),
+                    alignment_timescale=float(getattr(env, "alignment_timescale", float("nan"))),
+                    seed=int(getattr(env, "seed", -1) if seed is None else seed),
+                    observation_type=str(getattr(env, "observation_type", "unknown")),
+                    tag="BEST",
+            )
+
 
         if logging:
             if episode % 1 == 0:
-                ma = float(np.mean(episode_returns[-20:])) if len(episode_returns) >= 20 else float("nan")
                 print(f"Episode {episode} return:\t {episode_return:.4f}\t MA20={ma:.4f}")
                 if use_wandb:
                     wandb.log(

@@ -10,13 +10,35 @@ from agents.agent_saclearning import map_action_to_env
 
 _SAVE_FOLDER = "./checkpoints/"
 
-def save_actorcritic_checkpoint(agent: ActorCriticAgent, episode: int) -> None:
+def save_actorcritic_checkpoint(
+    agent: "ActorCriticAgent",
+    episode: int,
+    swimmer_speed: float,
+    alignment_timescale: float,
+    seed: int,
+    observation_type: str,
+    tag: str = "",
+) -> None:
     os.makedirs(_SAVE_FOLDER, exist_ok=True)
-    path = os.path.join(_SAVE_FOLDER, f"ac_ep{episode}.pt")
+
+    name = (
+        f"ac_{tag}_ep{episode}"
+        f"_phi{swimmer_speed}"
+        f"_psi{alignment_timescale}"
+        f"_seed{seed}"
+        f"_obs{observation_type}.pt"
+    )
+
+    path = os.path.join(_SAVE_FOLDER, name)
     payload = {
         "actor": agent.actor.state_dict(),
         "critic": agent.critic.state_dict(),
         "cfg": agent.cfg.__dict__,
+        "episode": episode,
+        "swimmer_speed": swimmer_speed,
+        "alignment_timescale": alignment_timescale,
+        "seed": seed,
+        "observation_type": observation_type,
     }
     torch.save(payload, path)
     print(f"Saved ActorCritic checkpoint: {path}")
@@ -54,6 +76,7 @@ def train_actorcritic(
     total_steps = 0
 
     episode_returns: List[float] = []
+    best_ma = float("-inf")
 
     for episode in tqdm(range(n_episodes)):
         obs = np.asarray(env.reset(), dtype=np.float32)
@@ -90,19 +113,23 @@ def train_actorcritic(
             episode_return += float(reward)
 
         episode_returns.append(episode_return)
+        ma = float(np.mean(episode_returns[-20:])) if len(episode_returns) >= 20 else float("nan")
 
-        if save:
-            if episode % 25 == 0 or episode == n_episodes - 1:
-                save_actorcritic_checkpoint(agent, episode)
-            if episode == n_episodes - 1:
-                os.makedirs(_SAVE_FOLDER, exist_ok=True)
-                np.save(
-                    os.path.join(_SAVE_FOLDER, "actorcritic_episode_returns.npy"),
-                    np.array(episode_returns, dtype=np.float32),
-                )
+        # best moving-average checkpoint
+        if ma > best_ma:
+            best_ma = ma
+            save_actorcritic_checkpoint(
+                    agent,
+                    episode=episode,
+                    swimmer_speed=float(getattr(env, "swimmer_speed", float("nan"))),
+                    alignment_timescale=float(getattr(env, "alignment_timescale", float("nan"))),
+                    seed=int(getattr(env, "seed", -1) if seed is None else seed),
+                    observation_type=str(getattr(env, "observation_type", "unknown")),
+                    tag="BEST",
+            )
+
 
         if logging:
-            ma = float(np.mean(episode_returns[-20:])) if len(episode_returns) >= 20 else float("nan")
             print(
                 f"Episode {episode} return:\t {episode_return:.4f}\t"
                 f" actor_loss={info.get('actor_loss', 0.0):.4f}"

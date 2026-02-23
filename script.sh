@@ -4,15 +4,15 @@ set -euo pipefail
 export OMP_NUM_THREADS=1
 
 N_STEPS=5000
-EP_SAC=250
-EP_MPO=250
+EP_SAC=150
+EP_MPO=150
 EP_AC=1000
 
 # (swimmer_speed, alignment_timescale) triplets
 PHIS=(0.1 1.0 0.3)
 PSIS=(0.3 1.0 1.0)
 
-ALGOS=("AC" "SAC" "MPO")
+ALGOS=("SAC" "MPO")
 
 for i in "${!PHIS[@]}"; do
   PHI="${PHIS[$i]}"
