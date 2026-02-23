@@ -20,6 +20,7 @@ if __name__ == "__main__":
     parser.add_argument("--train-type", type=str, choices=["qlearning", "MPO", "SAC", "AC"], default="qlearning")
     parser.add_argument("--use-wandb", action="store_true", default=False)
     parser.add_argument("--observation-type", type=str, choices=["original", "velocity"], default="velocity")
+    parser.add_argument("--c", type=float, default=10.0, help="reward scaling factor for SAC and MPO")
     args = parser.parse_args()
 
     if args.use_continuous_environment:
@@ -58,6 +59,7 @@ if __name__ == "__main__":
             save=True,
             seed=42,
             use_wandb=args.use_wandb,
+            c=args.c,
         )
     elif args.train_type == "MPO":
         print("Training MPO agent ...")
@@ -68,6 +70,7 @@ if __name__ == "__main__":
             save=True,
             seed=42,
             use_wandb=args.use_wandb,
+            c=args.c,
         )
     elif args.train_type == "AC":
         print("Training Actor-Critic agent ...")

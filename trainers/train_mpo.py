@@ -72,6 +72,7 @@ def train_mpo(
     logging: bool = True,
     seed: Optional[int] = None,
     use_wandb: bool = True,
+    c = 1.0,
 ) -> Dict[str, np.ndarray]:
     """Train MPO for the continuous swimmer environment (without Retrace).
 
@@ -128,7 +129,6 @@ def train_mpo(
 
             # Optional: normalize by dt for scale consistency
             dt = float(getattr(env, "dt", 1.0))
-            c = 1.0 / dt  # reward scaling factor
             reward = float(reward) *c
 
             # episode boundary treated as terminal for training

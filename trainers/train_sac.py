@@ -56,6 +56,7 @@ def train_sac(
     logging: bool = True,
     seed: Optional[int] = None,
     use_wandb: bool = True,
+    c = 1.0,
 ) -> Dict[str, np.ndarray]:
     """Train SAC for the continuous swimmer environment.
 
@@ -110,7 +111,6 @@ def train_sac(
 
             # reward
             dt = float(getattr(env, "dt", 1.0))
-            c = 1.0/dt # reward scaling factor to get returns in a nice range for SAC (not strictly necessary, but helps with stability and learning speed)
             reward = float(reward) * c
 
             # episode boundary treated as terminal for training
