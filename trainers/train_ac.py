@@ -29,6 +29,7 @@ def train_actorcritic(
     save: bool = False,
     logging: bool = True,
     seed: Optional[int] = None,
+    use_wandb: bool = True,
 ) -> Dict[str, np.ndarray]:
     """
     Train simple on-policy Actor-Critic.
@@ -38,8 +39,19 @@ def train_actorcritic(
     cfg = ActorCriticConfig(obs_dim=int(obs0.shape[0]), act_dim=1)
     agent = ActorCriticAgent(cfg, seed=seed)
 
+    if use_wandb:
+        import wandb
+        wandb.init(
+            project="fluidframe",
+            name=f"ac_phi{getattr(env, 'swimmer_speed', '?')}_psi{getattr(env, 'alignment_timescale', '?')}",
+            config=cfg.__dict__,
+        )
+        wandb.watch(agent.actor, log="gradients", log_freq=2000)
+        wandb.watch(agent.critic, log="gradients", log_freq=2000)
+
     # how many environment steps to collect before updating (to reduce variance)
     update_every = 50
+    total_steps = 0
 
     episode_returns: List[float] = []
 
@@ -68,7 +80,11 @@ def train_actorcritic(
             # performs one batched update every K steps
             if len(transition_buffer) >= update_every or done:
                 info = agent.update_batch(transition_buffer)
+                if use_wandb:
+                    wandb.log(info, step=total_steps)
                 transition_buffer.clear()
+
+            total_steps += 1
 
             obs = next_obs
             episode_return += float(reward)
@@ -86,10 +102,21 @@ def train_actorcritic(
                 )
 
         if logging:
+            ma = float(np.mean(episode_returns[-20:])) if len(episode_returns) >= 20 else float("nan")
             print(
                 f"Episode {episode} return:\t {episode_return:.4f}\t"
                 f" actor_loss={info.get('actor_loss', 0.0):.4f}"
-                f" critic_loss={info.get('critic_loss', 0.0):.4f}"
+                f" critic_loss={info.get('critic_loss', 0.0):.4f}\t MA20={ma:.4f}"
             )
+
+            if use_wandb:
+                wandb.log(
+                    {
+                        "episode_return": episode_return,
+                        "ma20_return": ma,
+                        "episode": episode,
+                    },
+                    step=total_steps,
+                )
 
     return {"episode_returns": np.array(episode_returns, dtype=np.float32)}

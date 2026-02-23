@@ -202,16 +202,25 @@ class ActorCriticAgent:
 
         advantage = target - v
 
+        td = advantage.detach()
+        td_abs = td.abs().mean()
+
+
         # ----- critic update -----
         critic_loss = 0.5 * (v - target).pow(2).mean()
         self.critic_opt.zero_grad(set_to_none=True)
         (self.cfg.value_coef * critic_loss).backward()
-        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.cfg.grad_clip)
+        critic_grad_norm = torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.cfg.grad_clip)
         self.critic_opt.step()
 
         # ----- actor update (recompute log-prob for stored tanh action) -----
         mu, log_std = self.actor(obs)
         log_prob = self._log_prob_tanh_gaussian(mu, log_std, a)
+
+        mu_abs = mu.detach().abs().mean()
+        log_std_c = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        log_std_mean = log_std_c.detach().mean()
+        a_abs = a.detach().abs().mean()
 
         adv = advantage.detach()
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
@@ -227,15 +236,7 @@ class ActorCriticAgent:
 
         self.actor_opt.zero_grad(set_to_none=True)
         actor_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.cfg.grad_clip)
-
-        if not torch.isfinite(actor_loss):
-            return {
-                "actor_loss": float("nan"),
-                "critic_loss": float(critic_loss.item()),
-                "v": float(v.mean().item()),
-                "target": float(target.mean().item()),
-            }
+        actor_grad_norm = torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.cfg.grad_clip)
 
         self.actor_opt.step()
 
@@ -244,4 +245,13 @@ class ActorCriticAgent:
             "critic_loss": float(critic_loss.item()),
             "v": float(v.mean().item()),
             "target": float(target.mean().item()),
+
+            "td_abs": float(td_abs.item()),
+            "entropy": float(entropy_proxy.detach().item()),
+            "log_std_mean": float(log_std_mean.item()),
+            "a_abs": float(a_abs.item()),
+            "mu_abs": float(mu_abs.item()),
+            "actor_grad_norm": float(actor_grad_norm) if torch.is_tensor(actor_grad_norm) else float(actor_grad_norm),
+            "critic_grad_norm": float(critic_grad_norm) if torch.is_tensor(critic_grad_norm) else float(
+                critic_grad_norm),
         }
