@@ -6,6 +6,7 @@ from environments.taylor_green_continuous import TaylorGreenContinuousEnvironmen
 from train import train
 from trainers.train_ac import train_actorcritic
 from trainers.train_sac import train_sac
+from trainers.train_mpo import train_mpo
 
 
 if __name__ == "__main__":
@@ -16,7 +17,9 @@ if __name__ == "__main__":
     parser.add_argument("--n-steps", type=int, default=100000)
     parser.add_argument("--use-dedalus-environment", action="store_true", default=False)
     parser.add_argument("--use-continuous-environment", action="store_true", default=False)
-    parser.add_argument("--train-type", type=str, choices=["qlearning", "SAC", "AC"], default="qlearning")
+    parser.add_argument("--train-type", type=str, choices=["qlearning", "MPO", "SAC", "AC"], default="qlearning")
+    parser.add_argument("--use-wandb", action="store_true", default=False)
+    parser.add_argument("--observation-type", type=str, choices=["original", "velocity"], default="velocity")
     args = parser.parse_args()
 
     if args.use_continuous_environment:
@@ -27,6 +30,7 @@ if __name__ == "__main__":
             alignment_timescale=args.alignment_timescale,
             seed=42,
             action_type="continuous",
+            observation_type=args.observation_type,
         )
     elif args.use_dedalus_environment:
         print("Using dedalus to specify flow variables ...")
@@ -53,6 +57,17 @@ if __name__ == "__main__":
             n_steps=args.n_steps,
             save=True,
             seed=42,
+            use_wandb=args.use_wandb,
+        )
+    elif args.train_type == "MPO":
+        print("Training MPO agent ...")
+        train_mpo(
+            env=env,
+            n_episodes=args.n_episodes,
+            n_steps=args.n_steps,
+            save=True,
+            seed=42,
+            use_wandb=args.use_wandb,
         )
     elif args.train_type == "AC":
         print("Training Actor-Critic agent ...")

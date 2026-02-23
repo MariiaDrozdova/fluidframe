@@ -64,3 +64,54 @@ python eval_networks.py \
     --alignment-timescale 1.0
 ```
 
+# SAC 
+```
+for each update:
+
+    batch ← replay buffer
+
+    # ----- critic -----
+    a_next ~ π(s_next)
+    target = r + γ (Q_target(s_next, a_next) - α logπ(a_next))
+    update Q networks toward target
+
+    # ----- actor -----
+    a ~ π(s)
+    actor_loss = α logπ(a) - Q(s,a)
+    update actor
+
+    # ----- target networks -----
+    soft update Q_target
+```
+
+# MPO
+
+```
+for each update:
+
+    batch ← replay buffer
+
+    # ----- critic -----
+    compute targets (often Retrace or TD(0)/TD(λ))
+    update Q networks
+
+    # ----- E-step (per state) -----
+    for each state s in batch:
+        sample many actions a_i ~ π_old(·|s)
+        compute Q(s, a_i)
+
+        # 1) solve for η (temperature) to satisfy KL constraint
+        find η* that makes:
+            KL( q(·|s) || π_old(·|s) ) ≈ ε
+
+        # 2) compute nonparametric q weights using η*
+        w_i ∝ exp(Q(s,a_i) / η*)
+        normalize w_i to sum to 1
+
+    # ----- M-step -----
+    update policy parameters θ to maximize:
+        Σ_s Σ_i w_i log π_θ(a_i | s)
+    subject to:
+        KL( π_old(·|s) || π_θ(·|s) ) ≤ ε_m
+```
+

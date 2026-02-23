@@ -7,7 +7,7 @@ from typing import Optional, Tuple, Dict
 
 from agents.agent_saclearning import Actor
 
-LOG_STD_MIN, LOG_STD_MAX = -5, 2
+LOG_STD_MIN, LOG_STD_MAX = -2, 1
 
 
 class ValueNet(nn.Module):
@@ -31,11 +31,11 @@ class ValueNet(nn.Module):
 class ActorCriticConfig:
     obs_dim: int
     act_dim: int = 1
-    gamma: float = 0.995
-    lr_actor: float = 3e-4
-    lr_critic: float = 3e-4
-    value_coef: float = 0.5
-    entropy_coef: float = 0.0
+    gamma: float = 0.99
+    lr_actor: float = 5e-5
+    lr_critic: float = 2e-4
+    value_coef: float = 1.0
+    entropy_coef: float = 1e-3
     grad_clip: float = 1.0
 
 
@@ -78,12 +78,55 @@ class ActorCriticAgent:
             logp = torch.zeros((), dtype=torch.float32)
             entropy_proxy = torch.zeros((), dtype=torch.float32)
         else:
-            a, logp = self.actor.sample(obs_t)       # logp: (1,1)
-            logp = logp.reshape(())                  # scalar tensor with grad
-            entropy_proxy = (-logp).detach()         # proxy; no grad needed
+            # NOTE: We only need a sampled action for data collection.
+            # `update_batch()` recomputes log-prob for the stored action, so
+            # we avoid computing log-prob here (it can become huge and is slow).
+            with torch.no_grad():
+                mu, log_std = self.actor(obs_t)
+                log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+                mu = torch.clamp(mu, -5.0, 5.0)
+                std = torch.exp(log_std)
+                eps = torch.randn_like(mu)
+                pre_tanh = mu + std * eps
+                a = torch.tanh(pre_tanh)
+            logp = torch.zeros((), dtype=torch.float32)
+            entropy_proxy = torch.zeros((), dtype=torch.float32)
 
         a_float = float(a.squeeze().detach().cpu().numpy())
         return a_float, logp, entropy_proxy
+
+    def _log_prob_tanh_gaussian(
+        self, mu: torch.Tensor, log_std: torch.Tensor, a_tanh: torch.Tensor
+    ) -> torch.Tensor:
+        """Log-prob of tanh-squashed Gaussian policy for given tanh-action.
+
+        Args:
+            mu, log_std: tensors of shape (B, act_dim)
+            a_tanh: tanh-squashed action in [-1,1], shape (B, act_dim)
+
+        Returns:
+            log_prob: shape (B, 1)
+        """
+        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(log_std)
+
+        # Stable atanh
+        a_clamped = torch.clamp(a_tanh, -0.999, 0.999)
+        pre_tanh = 0.5 * (torch.log1p(a_clamped) - torch.log1p(-a_clamped))
+
+        # log N(pre_tanh; mu, std)
+        log_prob = (
+            -0.5
+            * (
+                ((pre_tanh - mu) / (std + 1e-8)) ** 2
+                + 2.0 * log_std
+                + np.log(2.0 * np.pi)
+            )
+        ).sum(-1, keepdim=True)
+
+        # tanh correction
+        log_prob = log_prob - torch.log(1.0 - a_clamped.pow(2) + 1e-6).sum(-1, keepdim=True)
+        return log_prob
 
     def update_step(
         self,
@@ -117,19 +160,9 @@ class ActorCriticAgent:
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.cfg.grad_clip)
         self.critic_opt.step()
 
-        # Actor update
-        adv = advantage.detach()
-        if adv.std() > 1e-3:
-            adv = (adv - adv.mean()) / (adv.std() + 1e-8)
-        adv = adv.clamp(-5, 5)
-        actor_loss = -(logp *adv.reshape(())).mean()
-        if self.cfg.entropy_coef != 0.0:
-            actor_loss = actor_loss - self.cfg.entropy_coef * entropy_proxy
-
-        self.actor_opt.zero_grad(set_to_none=True)
-        actor_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.cfg.grad_clip)
-        self.actor_opt.step()
+        # Actor update (recompute log-prob for the stored action `a_tanh` is not available here,
+        # so `update_step` is not used for training in this implementation.)
+        actor_loss = torch.zeros((), dtype=torch.float32)
 
         return {
             "actor_loss": float(actor_loss.item()),
@@ -178,38 +211,32 @@ class ActorCriticAgent:
 
         # ----- actor update (recompute log-prob for stored tanh action) -----
         mu, log_std = self.actor(obs)
-        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
-        std = torch.exp(log_std)
-
-        # atanh(a) with clamping for numerical stability
-        a_clamped = torch.clamp(a, -0.999, 0.999)
-        pre_tanh = 0.5 * (torch.log1p(a_clamped) - torch.log1p(-a_clamped))
-
-        # log N(pre_tanh; mu, std)
-        log_prob = (
-            -0.5
-            * (
-                ((pre_tanh - mu) / (std + 1e-8)) ** 2
-                + 2.0 * log_std
-                + np.log(2.0 * np.pi)
-            )
-        ).sum(-1, keepdim=True)
-
-        # tanh correction
-        log_prob = log_prob - torch.log(1.0 - a_clamped.pow(2) + 1e-6).sum(-1, keepdim=True)
-
-        entropy_proxy = (-log_prob).mean()
+        log_prob = self._log_prob_tanh_gaussian(mu, log_std, a)
 
         adv = advantage.detach()
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         adv = adv.clamp(-5, 5)
-        actor_loss = -(log_prob * adv.detach()).mean()
+
+        # Stable entropy bonus (Gaussian entropy; ignores tanh correction but prevents std collapse)
+        log_std_c = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        entropy_proxy = (0.5 * (1.0 + np.log(2.0 * np.pi)) + log_std_c).sum(-1, keepdim=True).mean()
+
+        actor_loss = -(log_prob * adv).mean()
         if self.cfg.entropy_coef != 0.0:
             actor_loss = actor_loss - self.cfg.entropy_coef * entropy_proxy
 
         self.actor_opt.zero_grad(set_to_none=True)
         actor_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.cfg.grad_clip)
+
+        if not torch.isfinite(actor_loss):
+            return {
+                "actor_loss": float("nan"),
+                "critic_loss": float(critic_loss.item()),
+                "v": float(v.mean().item()),
+                "target": float(target.mean().item()),
+            }
+
         self.actor_opt.step()
 
         return {

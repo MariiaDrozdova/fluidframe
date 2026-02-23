@@ -58,7 +58,7 @@ def train_actorcritic(
             next_obs, reward = env.step(env_action)
             next_obs = np.asarray(next_obs, dtype=np.float32)
 
-            done = float(step == n_steps - 1)
+            done = 0#loat(step == n_steps - 1)
 
             # store transition
             transition_buffer.append(

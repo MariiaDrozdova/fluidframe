@@ -26,12 +26,14 @@ class TaylorGreenContinuousEnvironment(TaylorGreenEnvironment):
         diffusivity_translational: float = _DIFFUSIVITY_TRANSLATIONAL,
         seed: Optional[int] = None,
         action_type: Optional[str] = None,
+        observation_type: Optional[str] = None,
     ):
         """Initialise the environment, with continuous observations and continuous or discrete actions.
 
         Args:
             action_type: "discrete" ∈ {0, 1, 2, 3} or "continuous" ∈ [0, 2π]
         """
+        self.observation_type = observation_type
         super().__init__(
             dt=dt,
             swimmer_speed=swimmer_speed,
@@ -47,6 +49,9 @@ class TaylorGreenContinuousEnvironment(TaylorGreenEnvironment):
                 raise ValueError(
                     f"Invalid action_type {self.action_type!r}. Expected 'discrete', 'continuous', or None."
                 )
+
+        print("Initialized TaylorGreenContinuousEnvironment with action_type =", self.action_type)
+        print("                                             with observation_type =", self.observation_type)
 
     def _get_observation_original(self):
         """
@@ -64,6 +69,8 @@ class TaylorGreenContinuousEnvironment(TaylorGreenEnvironment):
 
     def _get_observation(self):
         """Compact continuous observation: [cosθ, sinθ, ux/u0, uy/u0, ω/u0]."""
+        if self.observation_type == "original":
+            return self._get_observation_original()
 
         theta = float(self.orientation)
         ux, uy = map(float, self.flow_velocity)
@@ -86,6 +93,7 @@ class TaylorGreenContinuousEnvironment(TaylorGreenEnvironment):
         if self.action_type == "continuous":
             orientation_preferred = action
         else:
+            print("discrete action!")
             orientation_preferred = action * np.pi / 2
 
         return orientation_preferred

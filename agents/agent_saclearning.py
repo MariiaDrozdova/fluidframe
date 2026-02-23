@@ -87,14 +87,14 @@ class CriticQ(nn.Module):
 class SACConfig:
     obs_dim: int = 9
     act_dim: int = 1
-    gamma: float = 0.995
+    gamma: float = 0.997
     tau: float = 0.005
-    alpha: float = 0.02
+    alpha: float = 0.01
     lr: float = 1e-4
     batch_size: int = 256
-    start_steps: int = 5_000
-    update_after: int = 5_000
-    update_every: int = 1
+    start_steps: int =10_000
+    update_after: int = 10_000
+    update_every: int = 50
     updates_per_step: int = 1
 
 class SACAgent:
@@ -127,19 +127,17 @@ class SACAgent:
         return float(a.squeeze().cpu().numpy())
 
     def update(self, batch):
-        o = batch["obs"]
-        a = batch["acts"]
-        r = batch["rews"]
-        o2 = batch["next_obs"]
-        d = batch["done"]
+        o, a, r, o2, d = batch["obs"], batch["acts"], batch["rews"], batch["next_obs"], batch["done"]
 
+        # --- critic target ---
         with torch.no_grad():
             a2, logp_a2 = self.actor.sample(o2)
-            q1_pi_targ = self.q1_targ(o2, a2)
-            q2_pi_targ = self.q2_targ(o2, a2)
-            q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
-            backup = r + self.cfg.gamma * (1 - d) * (q_pi_targ - self.cfg.alpha * logp_a2)
+            q1_t = self.q1_targ(o2, a2)
+            q2_t = self.q2_targ(o2, a2)
+            q_t = torch.min(q1_t, q2_t)
+            backup = r + self.cfg.gamma * (1 - d) * (q_t - self.cfg.alpha * logp_a2)
 
+        # --- critic loss ---
         q1_val = self.q1(o, a)
         q2_val = self.q2(o, a)
         q_loss = F.mse_loss(q1_val, backup) + F.mse_loss(q2_val, backup)
@@ -148,6 +146,7 @@ class SACAgent:
         q_loss.backward()
         self.q_opt.step()
 
+        # --- actor loss ---
         a_pi, logp_a = self.actor.sample(o)
         q1_pi = self.q1(o, a_pi)
         q2_pi = self.q2(o, a_pi)
@@ -158,10 +157,39 @@ class SACAgent:
         pi_loss.backward()
         self.actor_opt.step()
 
+        # --- target update ---
         with torch.no_grad():
             for p, p_t in zip(self.q1.parameters(), self.q1_targ.parameters()):
                 p_t.data.mul_(1 - self.cfg.tau).add_(self.cfg.tau * p.data)
             for p, p_t in zip(self.q2.parameters(), self.q2_targ.parameters()):
                 p_t.data.mul_(1 - self.cfg.tau).add_(self.cfg.tau * p.data)
 
-        return {"q_loss": float(q_loss.item()), "pi_loss": float(pi_loss.item())}
+        # ----- diagnostics -----
+        with torch.no_grad():
+            # entropy proxy = -log pi
+            entropy = (-logp_a).mean()
+
+            # action stats (tanh space)
+            a_mean = a_pi.mean()
+            a_std = a_pi.std()
+            a_abs = a_pi.abs().mean()
+
+            # Q stats
+            q1m, q2m = q1_val.mean(), q2_val.mean()
+            qmin = torch.min(q1_val, q2_val).mean()
+            targ_m = backup.mean()
+            td_abs = (backup - qmin.unsqueeze(-1)).abs().mean()  # rough proxy
+
+        return {
+            "q_loss": float(q_loss.item()),
+            "pi_loss": float(pi_loss.item()),
+            "entropy": float(entropy.item()),
+            "a_mean": float(a_mean.item()),
+            "a_std": float(a_std.item()),
+            "a_abs": float(a_abs.item()),
+            "q1_mean": float(q1m.item()),
+            "q2_mean": float(q2m.item()),
+            "qmin_mean": float(qmin.item()),
+            "target_mean": float(targ_m.item()),
+            "td_abs": float(td_abs.item()),
+        }
