@@ -76,15 +76,28 @@ class MPOAgent:
         )
 
     @torch.no_grad()
-    def act(self, obs: np.ndarray, deterministic: bool = False) -> float:
-        obs = np.asarray(obs, dtype=np.float32)
-        obs_t = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
-        mu, _ = self.actor(obs_t)
+    def act(self, obs, deterministic: bool = False) -> float:
+        # ensure observation is a torch tensor on the same device as the actor
+        device = next(self.actor.parameters()).device
+
+        if torch.is_tensor(obs):
+            obs = obs.to(device, dtype=torch.float32)
+        else:
+            obs = torch.as_tensor(obs, dtype=torch.float32, device=device)
+
+        # add batch dimension if needed
+        if obs.dim() == 1:
+            obs = obs.unsqueeze(0)
+
+        # forward through actor
+        mu, _ = self.actor(obs)
         if deterministic:
             a = torch.tanh(mu)
         else:
-            a, _ = self.actor.sample(obs_t)
-        return float(a.squeeze().cpu().numpy())
+            a, _ = self.actor.sample(obs)
+
+        # return scalar action
+        return a.squeeze(0).detach().cpu().item()
 
     # ---------- internal: dual for eta ----------
     def _solve_eta(self, q_values: torch.Tensor) -> float:

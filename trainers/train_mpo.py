@@ -88,6 +88,35 @@ def train_mpo(
     cfg = MPOConfig(obs_dim=obs_dim, act_dim=1)
     agent = MPOAgent(cfg, seed=seed)
 
+    # --- device selection (CUDA → Apple MPS → CPU) ---
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
+    print(f"Using device: {device}")
+
+    # move networks to device
+    agent.actor.to(device)
+    agent.q1.to(device)
+    agent.q2.to(device)
+    agent.q1_targ.to(device)
+    agent.q2_targ.to(device)
+
+    def _to_device(x):
+        """Recursively move tensors (and collections of tensors) to the selected device."""
+        if torch.is_tensor(x):
+            return x.to(device)
+        if isinstance(x, np.ndarray):
+            return torch.as_tensor(x, device=device)
+        if isinstance(x, dict):
+            return {k: _to_device(v) for k, v in x.items()}
+        if isinstance(x, (list, tuple)):
+            return type(x)(_to_device(v) for v in x)
+        return x
+
     if use_wandb:
         import wandb
         wandb.init(
@@ -119,7 +148,8 @@ def train_mpo(
             if total_steps < cfg.start_steps:
                 a = float(rng.uniform(-1.0, 1.0))
             else:
-                a = float(agent.act(obs, deterministic=False))
+                obs_dev = torch.as_tensor(obs, device=device)
+                a = float(agent.act(obs_dev, deterministic=False))
 
             env_action = float(map_action_to_env(a))
 
@@ -145,7 +175,7 @@ def train_mpo(
             # --- updates ---
             if total_steps >= cfg.update_after and (total_steps % cfg.update_every == 0):
                 for _ in range(cfg.update_every * cfg.updates_per_step):
-                    batch = buf.sample(cfg.batch_size)
+                    batch = _to_device(buf.sample(cfg.batch_size))
                     info = agent.update(batch)
                     if use_wandb:
                         wandb.log(info, step=total_steps)
