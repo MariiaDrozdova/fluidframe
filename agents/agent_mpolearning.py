@@ -99,6 +99,25 @@ class MPOAgent:
         # return scalar action
         return a.squeeze(0).detach().cpu().item()
 
+    @torch.no_grad()
+    def _sample_actions_batched(self, obs: torch.Tensor, n: int) -> torch.Tensor:
+        """Sample `n` actions per observation with a single actor.sample call.
+
+        Args:
+            obs: (B, obs_dim) tensor on the correct device
+            n: number of actions per observation
+
+        Returns:
+            a_samp: (B, n, act_dim)
+        """
+        if obs.dim() != 2:
+            raise ValueError(f"Expected obs shape (B, obs_dim), got {tuple(obs.shape)}")
+
+        B, obs_dim = obs.shape
+        obs_rep = obs.unsqueeze(1).expand(B, n, obs_dim).reshape(B * n, obs_dim)
+        a_flat, _ = self.actor.sample(obs_rep)  # (B*n, act_dim)
+        return a_flat.reshape(B, n, -1)
+
     # ---------- internal: dual for eta ----------
     def _solve_eta(self, q_values: torch.Tensor) -> float:
         """Solve eta (temperature) for weights softmax(Q/eta) using a bisection on the convex dual.
@@ -188,15 +207,18 @@ class MPOAgent:
         B = o.shape[0]
         N = int(self.cfg.n_action_samples)
 
-        # sample N actions per state using current (old) policy (NO grad)
-        o_rep = o.unsqueeze(1).expand(B, N, o.shape[-1]).reshape(B * N, o.shape[-1])
+        # sample N actions per state using current (old) policy (NO grad), vectorized
         with torch.no_grad():
-            a_samp, _ = self.actor.sample(o_rep)  # [B*N, act]
+            a_samp = self._sample_actions_batched(o, N)  # [B, N, act]
 
-        # compute Q for each sampled action (NO grad)
+        # flatten once for critic evaluation
+        o_rep = o.unsqueeze(1).expand(B, N, o.shape[-1]).reshape(B * N, o.shape[-1])
+        a_flat = a_samp.reshape(B * N, a_samp.shape[-1])
+
+        # compute Q for each sampled action (NO grad), vectorized
         with torch.no_grad():
-            q1_s = self.q1(o_rep, a_samp)
-            q2_s = self.q2(o_rep, a_samp)
+            q1_s = self.q1(o_rep, a_flat)
+            q2_s = self.q2(o_rep, a_flat)
             q_s = torch.min(q1_s, q2_s).reshape(B, N)  # [B, N]
 
         # solve eta and compute normalized weights
@@ -210,7 +232,7 @@ class MPOAgent:
         # We take multiple policy gradient steps so the KL penalty actually constrains the update.
         w_flat = w.reshape(B * N, 1)  # already detached above
         o_flat = o_rep
-        a_flat = a_samp.detach()
+        a_flat = a_flat.detach()
 
         # atanh for tanh-squashed actions (clip to avoid inf)
         a_clip = torch.clamp(a_flat, -0.999999, 0.999999).detach()
