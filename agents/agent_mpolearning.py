@@ -30,14 +30,14 @@ class MPOConfig:
     eta_max: float = 1e3
     eta_iters: int = 10                 # bisection iterations
     kl_coef: float = 1.0                # soft penalty strength for M-step KL
-    m_steps: int = 5                  # number of policy gradient steps per update (M-step)
+    m_steps: int = 2#5                  # number of policy gradient steps per update (M-step)
 
     # training loop expectations
-    batch_size: int = 256
+    batch_size: int = 512#256
     start_steps: int = 10_000
     update_after: int = 10_000
-    update_every: int = 50
-    updates_per_step: int = 1
+    update_every: int = 200#50
+    updates_per_step: int = 4#1
 
 
 class MPOAgent:
