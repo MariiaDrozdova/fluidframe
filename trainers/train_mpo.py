@@ -160,7 +160,7 @@ def train_mpo(
                 episode=episode,
                 swimmer_speed=env.swimmer_speed,
                 alignment_timescale=env.alignment_timescale,
-                seed=env.seed,
+                seed=int(getattr(env, "seed", -1) if seed is None else seed),
                 observation_type=getattr(env, "observation_type", "unknown"),
                 tag="BEST",
             )
